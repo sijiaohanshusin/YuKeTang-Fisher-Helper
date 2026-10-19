@@ -22,10 +22,12 @@ def build(compiler, skip_dependencies=False):
     release = ROOT / "release"
     release.mkdir(exist_ok=True)
     (ROOT / "build").mkdir(exist_ok=True)
-    from generate_notices import generate
-    generate(ROOT)
     npm = "npm.cmd" if os.name == "nt" else "npm"
     if not skip_dependencies: run([npm, "ci"], ROOT / "frontend")
+    from generate_notices import generate
+    generate(ROOT)
+    if not (ROOT / "build" / "licenses" / "npm-react.txt").is_file():
+        raise RuntimeError("Frontend notices missing; install the locked frontend dependencies first")
     run([npm, "run", "build"], ROOT / "frontend")
     run([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"])
     report = ROOT / "build" / "submission-validation.json"

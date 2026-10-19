@@ -14,4 +14,4 @@
 
 推荐下载 `YuketangHelper-Setup-v2.1.0-Windows-x64.exe`，也可选择 `Portable` 压缩包。`install-latest.ps1` 会核对 SHA256 后静默安装，不改变系统执行策略。
 
-仅对 Windows 10/11 x64 验证。可执行文件未做发行者代码签名；`SHA256SUMS.txt` 用于核对下载完整性。来源与组件许可见随包 THIRD_PARTY_NOTICES 和 licenses。
+发布目标为 Windows 10/11 x64；本次实机验证为 Windows 11（build 26200），Windows 10 尚未实机验证。可执行文件未做发行者代码签名；`SHA256SUMS.txt` 用于核对下载完整性。来源与组件许可见随包 THIRD_PARTY_NOTICES 和 licenses。
