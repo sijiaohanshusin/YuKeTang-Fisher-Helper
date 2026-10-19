@@ -1,129 +1,19 @@
-<div align="center">
+# Yuketang Helper Windows Desktop
 
-# Yuketang Helper Web
+[中文说明](README.md) · [Windows releases](https://github.com/sijiaohanshusin/YuKeTang-Fisher-Helper/releases/latest)
 
-**Yuketang (Rain Classroom) Helper — Web Edition**
+Download the Windows x64 installer and follow the five-step setup wizard: verify your account by scanning the login QR code, configure and test an image-capable AI model, select joined classes, choose the runtime mode, then review and save.
 
-[![Release](https://img.shields.io/github/v/release/Nijika-jia/YuKeTang-Fisher-Helper?style=for-the-badge&logo=github&label=RELEASE)](https://github.com/Nijika-jia/YuKeTang-Fisher-Helper/releases)
-[![License](https://img.shields.io/github/license/Nijika-jia/YuKeTang-Fisher-Helper?style=for-the-badge)](LICENSE)
+The installer requires neither Python nor Node.js nor administrator access. A portable ZIP and a checksum-verifying deployment script are also provided. New installations start in observation mode with attendance and answer submission disabled. Existing local settings are retained.
 
-[![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+Attendance and answer submission have separate switches. AI trial mode displays answers without submitting them. Automatic mode can submit valid AI answers for selected classes. Missing configuration, model errors, invalid output, insufficient time and unsupported question types are reported and skipped. There is no random or blank fallback. Duplicate questions and uncertain POST outcomes are recorded to prevent blind retries.
 
-[![Docker](https://img.shields.io/badge/Docker-Supported-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
-[![Platform](https://img.shields.io/badge/Platform-Win%20%7C%20macOS%20%7C%20Linux-lightgrey?style=for-the-badge)](https://github.com/Nijika-jia/YuKeTang-Fisher-Helper/releases)
-[![Bilingual](https://img.shields.io/badge/i18n-中%20%7C%20EN-blueviolet?style=for-the-badge)](#)
-[![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-ff69b4?style=for-the-badge)](https://github.com/Nijika-jia/YuKeTang-Fisher-Helper/pulls)
+Single-choice, multiple-choice, voting and short-answer payloads pass local HTTP simulation. Fill-in-the-blank questions remain unsupported. Real login, classroom discovery, attendance, classroom WebSocket connection and a single-choice AI preview have been verified on Windows. Real answer acceptance, grading, other question types and consecutive live classes still need classroom validation. The 16-case diagnostic uses simulated AI and a loopback HTTP server; it produces no real classroom requests.
 
-</div>
+The console shows discovery health, classroom heartbeats, question details, AI answers and server acceptance separately. Closing the browser keeps the backend running. Computer sleep, shutdown and network loss interrupt monitoring. Use the Start menu stop shortcut or portable `stop.cmd` to stop the backend.
 
----
+Installer data is stored under `%LOCALAPPDATA%\YuketangHelper`; portable data is stored beside the executable. Distribution packages contain no personal sessions, keys or classroom records. Uninstalling retains personal data. Binaries are not publisher-signed; verify the provided SHA256 checksums.
 
-> Based on [RainClassroomAssitant](https://github.com/TrickyDeath/RainClassroomAssitant) and [THU-Yuketang-Helper](https://github.com/zhangchi2004/THU-Yuketang-Helper)
+For source development on Windows, initialize with `init-local.bat`, then use `start-local.bat`, `stop-local.bat` and `logs-local.bat`. Python 3.11 and the locked dependencies have been tested. Only Windows x64 distribution is currently verified.
 
-[中文](README.md) | English
-
-##  Features
-
-| Feature | Description |
-|---------|-------------|
-| **Auto Sign-in** | Simulates app QR code scanning to automatically check in |
-| **Auto Quiz Answering** | Handles single/multiple choice, voting, and short-answer questions with configurable strategies (random / blank / AI / answer queue) |
-| **Answer Fallback Strategy** | Answer queue → AI → Random, three-level fallback to ensure no question is missed |
-| **Answer Queue** | Preset answers matched by PPT page number, with batch import and editing support |
-| **AI Answering** | Supports Google Gemini, OpenAI, ModelScope and more LLM providers |
-| **Auto Danmu** | Automatically sends bullet chat when 3+ identical messages appear (threshold adjustable) |
-| **Auto Red Packet** | Automatically grabs red packets when received |
-| **Roll Call Alert** | Sends notification when roll call is detected |
-| **Voice Notification** | Text-to-speech announcements for lesson events, with custom audio support |
-| **Per-Course Settings** | Fine-grained automation control for each course |
-| **Multi-Server Support** | Supports multiple Yuketang servers |
-| **Bilingual UI** | English and Chinese interface |
-| **Real-time Dashboard** | Live activity feed of all lesson events |
-
-##  Quick Start
-
-### Option 1: Auto Initialization (Recommended)
-
-```bash
-git clone https://github.com/Nijika-jia/YuKeTang-Fisher-Helper.git
-cd YuKeTang-Fisher-Helper
-```
-
-1. Double-click `init.bat` and wait for initialization
-2. Double-click `run.bat`
-3. Open http://localhost:8500 in your browser
-
-### Option 2: Manual Initialization
-
-```bash
-git clone https://github.com/Nijika-jia/YuKeTang-Fisher-Helper.git
-cd YuKeTang-Fisher-Helper
-
-# Install frontend dependencies
-cd frontend && npm install && cd ..
-
-# Install backend dependencies
-cd backend && pip install -r requirements.txt && cd ..
-
-# Start
-python start.py
-```
-
-Open http://localhost:8500 in your browser.
-
-### Option 3: Docker
-
-```bash
-docker compose up -d
-```
-
-### Option 4: Download Executable
-
-Go to [Releases](https://github.com/Nijika-jia/YuKeTang-Fisher-Helper/releases) to download the executable for your platform.
-
-##  Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| **Frontend** | React 18 + TypeScript + Vite + react-i18next |
-| **Backend** | FastAPI + Uvicorn + WebSocket |
-| **AI** | Google Gemini / OpenAI / ModelScope |
-| **Deployment** | Docker + Docker Compose / PyInstaller |
-
-##  Get AI API Key (Free)   
-
-| Provider | How to Get |
-|----------|------------|
-| **ModelScope** | Log in at [ModelScope](https://modelscope.cn/), bind your Alibaba Cloud account in [Account Settings](https://modelscope.cn/my/settings/account), then go to [Access Control](https://modelscope.cn/my/access/token) to create a token |
-| **Google** | Log in at [Google AI Studio](https://aistudio.google.com/), go to [Get API Key](https://aistudio.google.com/api-keys) and create a key |
-
-##  Usage
-
-- **Start**: `python start.py` or double-click `run.bat`
-- **Stop**: `python stop.py` or close the terminal
-- **Access**: http://localhost:8500
-
-##  TODO
-
-- [ ] Support more LLM APIs
-- [ ] Support fill-in-the-blank answering
-- [ ] Auto preview
-
-##  Disclaimer
-
-This project is for educational purposes only. Users assume all risks. Please comply with applicable laws and school regulations. The author is not responsible for any consequences arising from the use of this project.
-
-##  License
-
-This project is licensed under the [MIT License](LICENSE).
-
----
-
-<div align="center">
-
-**If this project helps you, please consider giving it a Star ⭐**
-
-</div>
+See [distribution instructions](分发使用说明.md), [validation record](验证记录.md), [release notes](RELEASE_NOTES.md), and [third-party notices](THIRD_PARTY_NOTICES.md). This fork is based on [Nijika-jia/YuKeTang-Fisher-Helper](https://github.com/Nijika-jia/YuKeTang-Fisher-Helper) at `cc46b316fe3b37499f463e28e5a8f634df1416e8`; attribution and license statements are retained in the notices.

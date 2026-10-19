@@ -33,4 +33,5 @@ dist/
 !*.example
 *.local.json
 backend/static/
+/release/
 .git/

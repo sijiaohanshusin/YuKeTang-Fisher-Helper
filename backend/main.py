@@ -29,7 +29,7 @@ from Crypto.PublicKey import RSA as CryptoRSA
 from Crypto.Cipher import PKCS1_v1_5
 
 import websocket
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -46,6 +46,8 @@ from config import (
 )
 from monitor import Monitor
 from runtime import get_runtime, save_runtime
+from app_version import VERSION
+from resources import resource_path
 
 # API URLs (used only in main.py)
 URL_WSS = "wss://{domain}/wsapp/"
@@ -797,8 +799,22 @@ async def experiment_health():
         validation = None
     if validation:
         validation["current_config"] = validation.get("fingerprint") == _ai_fingerprint()
-    return {"server": "ok", "domain": get_domain(), "login_verified": _auth_verified,
-            "runtime": get_runtime(), "monitor": m.health() if m else None, "vision_validation": validation}
+    check_path = STORE_DIR / "submission-test.json"
+    try:
+        submission = json.loads(check_path.read_text(encoding="utf-8")) if check_path.exists() else None
+    except (ValueError, OSError): submission = None
+    return {"server": "ok", "version": VERSION, "domain": get_domain(), "login_verified": _auth_verified,
+            "runtime": get_runtime(), "monitor": m.health() if m else None, "vision_validation": validation,
+            "submission_validation": submission,
+            "needs_setup": not get_config().get("setup_completed", False) and not (get_ai_config().get("keys") and get_runtime()["course_ids"])}
+
+
+@app.post("/api/setup/complete")
+async def setup_complete():
+    cfg = get_config()
+    cfg["setup_completed"] = True
+    save_config(cfg)
+    return {"ok": True}
 
 
 def _ai_fingerprint():
@@ -847,18 +863,18 @@ async def recent_events():
 
 @app.get("/api/experiment/sample.png")
 async def experiment_sample_image():
-    return FileResponse(Path(__file__).resolve().parent.parent / "examples" / "circuit.png")
+    return FileResponse(resource_path("examples/circuit.png"))
 
 
 @app.post("/api/experiment/vision-test")
-async def experiment_vision_test():
+async def experiment_vision_test(request: Request):
     from lesson import Lesson
     # Same image download, multimodal request and strict parser as classroom questions.
     problem = {"problemId": "local-circuit", "problemType": 1,
                "content": "Read the circuit image and compute current I. Choose the answer.",
                "options": [{"key": "A", "content": "1 A"}, {"key": "B", "content": "2 A"},
                            {"key": "C", "content": "3 A"}, {"key": "D", "content": "6 A"}],
-               "_cover": "http://127.0.0.1:8500/api/experiment/sample.png"}
+               "_cover": str(request.base_url).rstrip("/") + "/api/experiment/sample.png"}
     def run():
         instance = Lesson({"lessonid": 0, "lessonname": "本地图片试题", "classroomid": 0}, "", {}, lambda *args: None)
         return instance._build_ai_answers(problem, time.monotonic() + get_runtime()["ai_timeout"])
@@ -878,6 +894,59 @@ async def experiment_vision_test():
     event_log.append({"type": "vision_test", "status": "passed" if result.get("correct") else "failed",
                       "message": "本地电路图模型接口验证，不产生课堂提交", **result})
     return result
+
+
+_diagnostic_lock = threading.Lock()
+
+
+@app.post("/api/experiment/submission-test")
+async def submission_diagnostic():
+    def run():
+        import subprocess
+        import tempfile
+        if not _diagnostic_lock.acquire(blocking=False):
+            return {"ok": False, "error": "自检正在运行，请稍后查看结果"}
+        try:
+            with tempfile.TemporaryDirectory(prefix="yuketang-diagnostic-") as folder:
+                report = Path(folder) / "result.json"
+                if getattr(sys, "frozen", False):
+                    command = [sys.executable, "--self-test", "--report", str(report)]
+                else:
+                    command = [sys.executable, "-m", "submission_check", "--report", str(report)]
+                options = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
+                subprocess.run(command, cwd=Path(__file__).resolve().parent, timeout=45,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **options)
+                if not report.exists(): return {"ok": False, "error": "自检进程未完成，请查看本机日志"}
+                result = json.loads(report.read_text(encoding="utf-8"))
+                (STORE_DIR / "submission-test.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+                event_log.append({"type": "submission_test", "status": "passed" if result.get("ok") else "failed",
+                                  "message": f"本机模拟提交自检：{result.get('passed')}/{result.get('total')}，真实课堂请求 0"})
+                return result
+        except Exception as exc:
+            return {"ok": False, "error": "自检未完成：" + type(exc).__name__}
+        finally:
+            _diagnostic_lock.release()
+    return await asyncio.to_thread(run)
+
+
+@app.get("/api/lessons/{lesson_id}/problems/{problem_id}/image")
+async def problem_image(lesson_id: str, problem_id: str):
+    from ai_provider import AIProvider, image_mime
+    from fastapi.responses import Response
+    m = get_monitor()
+    if not m: raise HTTPException(404, "课堂未连接")
+    with m._lock:
+        item = next((l for l in m._active_lessons.values() if str(l.lessonid) == lesson_id), None)
+    if not item: raise HTTPException(404, "课堂已结束")
+    with item._lock:
+        problem = next((p.copy() for p in item.problems_ls if str(p["problemId"]) == problem_id), None)
+    if not problem or not problem.get("_cover"): raise HTTPException(404, "题图暂不可用")
+    try:
+        provider = AIProvider().prepare({}, 10, item.headers)
+        picture = await asyncio.to_thread(provider._fetch_image, problem["_cover"])
+        return Response(picture, media_type=image_mime(picture), headers={"Cache-Control": "private, max-age=30"})
+    except Exception:
+        raise HTTPException(502, "题图获取失败")
 
 
 def _get_static_dir() -> Path:

@@ -1,129 +1,66 @@
-<div align="center">
+# 雨课堂助手 Windows Desktop
 
-# Yuketang Helper Web
+持续发现已加入班级的课堂，按独立开关自动签到、调用视觉模型作答并提交有效答案。新安装默认观察模式，不产生考勤或答题记录。
 
-**雨课堂助手 Web 版**
+## 一键安装
 
-[![Release](https://img.shields.io/github/v/release/Nijika-jia/YuKeTang-Fisher-Helper?style=for-the-badge&logo=github&label=RELEASE)](https://github.com/Nijika-jia/YuKeTang-Fisher-Helper/releases)
-[![License](https://img.shields.io/github/license/Nijika-jia/YuKeTang-Fisher-Helper?style=for-the-badge)](LICENSE)
+前往 [Releases](https://github.com/sijiaohanshusin/YuKeTang-Fisher-Helper/releases/latest) 下载 **YuketangHelper-Setup-v2.1.0-Windows-x64.exe**，双击安装。无需 Python、Node.js 或管理员权限。安装后从桌面或开始菜单打开，跟随五步配置向导完成：
 
-[![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+1. 微信扫码登录，普通主站选择 `www.yuketang.cn`。
+2. 配置支持图片输入的模型，并验证电路图示例。
+3. 选择已加入的班级，可搜索、全选或只选择正在上课的班级。
+4. 选择观察、AI 试答或自动运行，独立控制签到和答案提交。
+5. 核对后保存，程序持续运行；无课等待，下课后继续发现下一节。
 
-[![Docker](https://img.shields.io/badge/Docker-Supported-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
-[![Platform](https://img.shields.io/badge/Platform-Win%20%7C%20macOS%20%7C%20Linux-lightgrey?style=for-the-badge)](https://github.com/Nijika-jia/YuKeTang-Fisher-Helper/releases)
-[![Bilingual](https://img.shields.io/badge/i18n-中%20%7C%20EN-blueviolet?style=for-the-badge)](#)
-[![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-ff69b4?style=for-the-badge)](https://github.com/Nijika-jia/YuKeTang-Fisher-Helper/pulls)
+也可下载 Portable 压缩包，解压后双击 `YuketangHelper.exe`。发布页另附 SHA256SUMS 与可选的 `install-latest.ps1` 部署脚本。
 
-</div>
+## 运行方式
 
-> 基于 [RainClassroomAssitant](https://github.com/TrickyDeath/RainClassroomAssitant) 和 [THU-Yuketang-Helper](https://github.com/zhangchi2004/THU-Yuketang-Helper)
+| 模式 | 进入并签到 | AI 作答 | 答案提交 |
+| --- | --- | --- | --- |
+| 观察 | 关闭 | 不建立课堂连接 | 关闭 |
+| AI 试答 | 独立开关 | 取得课堂令牌后试答 | 强制关闭 |
+| 自动运行 | 独立开关 | 取得课堂令牌后作答 | 独立开关 |
 
-中文 | [English](README_EN.md)
+当前已知课堂连接流程需要先签到取得令牌。微信登录码与课堂签到是不同流程，不需要逐节提供课堂二维码图片。
 
-> 当前本地课堂验证分支：请先阅读 [Windows 本地使用说明](本地使用说明.md)，使用 `start-local.bat` / `stop-local.bat`。本地版本默认主站及观察模式，AI 失败跳过，停用随机／空白降级、弹幕和红包；下面的上游功能介绍与默认启动方式不代表本地实验配置。
+AI 未配置、失败、格式无效或超时会跳过，不会随机蒙答或提交空白。同一课次同一题持久防重，响应未知时不盲目重发。界面分别显示题面就绪、AI 格式有效、请求已发送、服务器接受与服务器拒绝。
 
-## ✨ 功能特性
+## 题型
 
-| 功能 | 描述 |
-|------|------|
-| **自动签到** | 模拟 APP 扫码进入课堂，自动完成签到 |
-| **自动答题** | 支持单选、多选、投票和简答题，可配置答题策略（随机 / 空白 / AI / 答案队列） |
-| **答题降级策略** | 答案队列 → AI 答题 → 随机答题，三级降级确保不漏答 |
-| **答案队列** | 预设答案，按 PPT 页数匹配自动提交，支持批量导入与编辑 |
-| **AI 答题** | 支持 Google Gemini、OpenAI、ModelScope 等多种 LLM |
-| **自动弹幕** | 检测到 3 条以上相同弹幕时自动跟发（阈值可调） |
-| **自动抢红包** | 收到红包时自动抢 |
-| **点名提醒** | 点名时发送通知提醒 |
-| **语音通知** | 支持语音播报课程事件，支持自定义音频 |
-| **分课程设置** | 对每门课程进行精细化自动化控制 |
-| **多服务器支持** | 支持多个雨课堂服务器 |
-| **双语界面** | 支持中英文切换 |
-| **实时面板** | 实时展示所有课程事件动态 |
+| 题型 | 本地模拟提交 | 真实课堂验证 |
+| --- | --- | --- |
+| 单选 | 通过 | 已取得题图并产生 AI 试答；真实提交待验证 |
+| 多选 | 通过 | 待验证 |
+| 投票 | 通过，遵守可选数量 | 待验证 |
+| 简答 | 通过 | 待验证 |
+| 填空 | 明确跳过 | 不宣称支持 |
 
-## 🚀 快速开始
+“提交自检”可一键运行 16 个场景，使用模拟 AI 和本机 HTTP 服务。模拟服务接受不等于真实雨课堂接受，答案格式有效也不等于答案正确。
 
-### 方式一：自动初始化（推荐）
+## 数据与停止
 
-```bash
-git clone https://github.com/Nijika-jia/YuKeTang-Fisher-Helper.git
-cd YuKeTang-Fisher-Helper
+安装版配置和日志位于 `%LOCALAPPDATA%\YuketangHelper`。免安装版使用解压目录下的 `store` 与 `logs`。发布包不含任何个人会话、密钥、课程或课堂记录。卸载保留个人数据；停止入口位于开始菜单，免安装版可用 `stop.cmd`。
+
+关闭浏览器不结束后台进程。系统休眠、关机或断网会中断监听，恢复后程序尝试重连。健康状态应结合发现循环最近成功时间和课堂 Pong，不能只看进程存活。
+
+## 从源码运行
+
+Windows 已有 Python 3.11+ 与 Node.js 时，双击 `init-local.bat` 初始化，再运行 `start-local.bat`。访问 [本机运行台](http://127.0.0.1:8500/experiment)。`stop-local.bat` 停止，`logs-local.bat` 查看日志。
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe tools/build_release.py --compiler "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 ```
 
-1. 双击运行 `init.bat` 等待初始化完成
-2. 双击运行 `run.bat`
-3. 浏览器打开 http://localhost:8500
+构建前安装 `backend/requirements-local.lock.txt` 与 `backend/requirements-build.txt`。构建脚本会验证前端、行为测试、模拟 HTTP 提交、冻结程序启动／停止及安装／卸载，再生成白名单分发包。GitHub Actions 在干净 Windows runner 上重复构建验证。
 
-### 方式二：手动初始化
+源码本地入口继续使用项目 `.venv`；打包后的安装版不依赖目标机器上的 Python 或 Node.js。当前发布仅验证 Windows x64，未将其描述为 Linux/macOS 验证结果。
 
-```bash
-git clone https://github.com/Nijika-jia/YuKeTang-Fisher-Helper.git
-cd YuKeTang-Fisher-Helper
+详细说明：[分发使用说明](分发使用说明.md)、[本机实验使用说明](本地使用说明.md)、[历史验证记录](验证记录.md)、[本次发布说明](RELEASE_NOTES.md)。
 
-# 安装前端依赖
-cd frontend && npm install && cd ..
+## 来源
 
-# 安装后端依赖
-cd backend && pip install -r requirements.txt && cd ..
+本分支基于 [Nijika-jia/YuKeTang-Fisher-Helper](https://github.com/Nijika-jia/YuKeTang-Fisher-Helper)，其上游为 [dvdsanyi/Yuketang-Helper-Web](https://github.com/dvdsanyi/Yuketang-Helper-Web)，并注明参考 [RainClassroomAssitant](https://github.com/TrickyDeath/RainClassroomAssitant) 与 [THU-Yuketang-Helper](https://github.com/zhangchi2004/THU-Yuketang-Helper)。原始快照提交为 cc46b316fe3b37499f463e28e5a8f634df1416e8。
 
-# 启动
-python start.py
-```
-
-浏览器打开 http://localhost:8500
-
-### 方式三：Docker
-
-```bash
-docker compose up -d
-```
-
-### 方式四：下载可执行文件
-
-前往 [Releases](https://github.com/Nijika-jia/YuKeTang-Fisher-Helper/releases) 下载对应平台的可执行文件，双击运行即可。
-
-## 🛠 技术栈
-
-| 层级 | 技术 |
-|------|------|
-| **前端** | React 18 + TypeScript + Vite + react-i18next |
-| **后端** | FastAPI + Uvicorn + WebSocket |
-| **AI** | Google Gemini / OpenAI / ModelScope |
-| **部署** | Docker + Docker Compose / PyInstaller |
-
-## 🔑 获取 AI API 密钥（免费）
-
-| 提供商 | 获取方式 |
-|--------|---------|
-| **ModelScope** | 登录 [ModelScope](https://modelscope.cn/)，先在[账号设置](https://modelscope.cn/my/settings/account)绑定阿里云账号，然后前往[访问控制](https://modelscope.cn/my/access/token)新建令牌 |
-| **Google** | 登录 [Google AI Studio](https://aistudio.google.com/)，进入 [Get API Key](https://aistudio.google.com/api-keys) 创建密钥 |
-
-## 📖 使用说明
-
-- **启动**：`python start.py` 或双击 `run.bat`
-- **停止**：`python stop.py` 或关闭终端窗口
-- **访问**：http://localhost:8500
-
-## 📋 待办
-
-- [ ] 支持更多 LLM API
-- [ ] 支持填空题答题
-- [ ] 自动预习
-
-## ⚠️ 免责声明
-
-本项目仅供学习交流使用，使用者需自行承担使用风险。请遵守相关法律法规和学校规定，作者不对因使用本项目造成的任何后果负责。
-
-## 📄 开源协议
-
-本项目基于 [MIT License](LICENSE) 开源。
-
----
-
-<div align="center">
-
-**如果这个项目对你有帮助，请给个 Star ⭐**
-
-</div>
+上游 README 声明 MIT，本次原始快照未附 LICENSE 文件；完整来源与组件许可说明见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md)。

@@ -13,6 +13,7 @@ interface ServerOption {
 
 interface LoginProps {
   onSuccess: () => void
+  embedded?: boolean
 }
 
 declare global {
@@ -24,7 +25,7 @@ declare global {
   }
 }
 
-export default function Login({ onSuccess }: LoginProps) {
+export default function Login({ onSuccess, embedded = false }: LoginProps) {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const wsRef = useRef<WebSocket | null>(null)
@@ -111,7 +112,7 @@ export default function Login({ onSuccess }: LoginProps) {
       } else if (type === 'success') {
         setStatus('success')
         onSuccess()
-        setTimeout(() => navigate('/dashboard'), 1000)
+        if (!embedded) setTimeout(() => navigate('/experiment'), 1000)
       }
     }
   }
@@ -151,7 +152,7 @@ export default function Login({ onSuccess }: LoginProps) {
           if (data.ok) {
             setStatus('success')
             onSuccess()
-            setTimeout(() => navigate('/dashboard'), 1000)
+            if (!embedded) setTimeout(() => navigate('/experiment'), 1000)
           } else {
             setPwError(data.error || t('login.pwFailed'))
           }

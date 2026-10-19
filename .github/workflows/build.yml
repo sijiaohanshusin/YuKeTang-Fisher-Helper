@@ -1,83 +1,51 @@
-name: Build Executables
-
+name: Windows Build and Verification
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+  pull_request:
   workflow_dispatch:
-
+permissions:
+  contents: read
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            artifact: YuketangHelper-Windows
-            ext: .exe
-          - os: macos-latest
-            artifact: YuketangHelper-macOS
-            ext: ""
-          - os: ubuntu-latest
-            artifact: YuketangHelper-Linux
-            ext: ""
-
-    runs-on: ${{ matrix.os }}
-
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-
-      - name: Install frontend dependencies and build
+          python-version: '3.11'
+      - name: Install pinned Python and build dependencies
+        run: python -m pip install -r backend/requirements-local.lock.txt -r backend/requirements-build.txt
+      - name: Locate verified Inno Setup compiler
+        shell: pwsh
         run: |
-          cd frontend
-          npm ci
-          npm run build
-
-      - name: Install Python dependencies
-        run: |
-          pip install -r backend/requirements.txt
-          pip install pyinstaller
-
-      - name: Build executable
-        run: pyinstaller YuketangHelper.spec
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+          $compilerPath = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path -LiteralPath $compilerPath)) {
+            New-Item -ItemType Directory -Force build/tools | Out-Null
+            Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile build/tools/inno.exe
+            $signature = Get-AuthenticodeSignature build/tools/inno.exe
+            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notlike '*Pyrsys*') { throw 'Invalid compiler signature' }
+            $compilerDir = Join-Path $env:GITHUB_WORKSPACE 'build/tools/InnoSetup'
+            Start-Process -FilePath (Resolve-Path build/tools/inno.exe) -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER','/NOICONS',('/DIR="{0}"' -f $compilerDir)) -WindowStyle Hidden -Wait
+            $compilerPath = Join-Path $compilerDir 'ISCC.exe'
+          }
+          "INNO_COMPILER=$compilerPath" >> $env:GITHUB_ENV
+      - name: Build installer and portable package with frozen smoke tests
+        run: python tools/build_release.py --compiler "$env:INNO_COMPILER"
+      - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: dist/YuketangHelper${{ matrix.ext }}
-
-  release:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/download-artifact@v4
+          name: Windows-release
+          path: release/*
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          path: artifacts
-
-      - name: Prepare release files
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          mkdir -p release
-          cp artifacts/YuketangHelper-Windows/YuketangHelper.exe "release/YuketangHelper-Windows-${VERSION}.exe"
-          cp artifacts/YuketangHelper-macOS/YuketangHelper "release/YuketangHelper-macOS-${VERSION}"
-          cp artifacts/YuketangHelper-Linux/YuketangHelper "release/YuketangHelper-Linux-${VERSION}"
-          chmod +x "release/YuketangHelper-macOS-${VERSION}" "release/YuketangHelper-Linux-${VERSION}"
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: release/*
+          name: Verification-results
+          path: |
+            build/*validation.json
+            build/*smoke.json

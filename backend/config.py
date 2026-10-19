@@ -36,7 +36,7 @@ def _get_base_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-STORE_DIR = _get_base_dir() / "store"
+STORE_DIR = Path(os.environ["YUKETANG_DATA_DIR"]).resolve() if os.environ.get("YUKETANG_DATA_DIR") else _get_base_dir() / "store"
 STORE_DIR.mkdir(parents=True, exist_ok=True)
 
 _CONFIG_PATH = STORE_DIR / "config.json"
