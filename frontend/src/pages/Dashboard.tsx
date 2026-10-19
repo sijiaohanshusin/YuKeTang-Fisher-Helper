@@ -61,7 +61,8 @@ function formatEventLabel(event: ActivityEvent, t: (key: string) => string): str
       if (event.status === 'ai_fallback_random') {
         return `${lesson}${problemTypeName}: ${t('events.ai_fallback_random')}`
       }
-      const statusText = t(`events.${event.status || 'success'}`)
+      const statuses: Record<string, string> = { accepted: '服务器已接受', sent: '请求已发出', preview: '试答，未提交', rejected: '服务器拒绝', unknown: '结果未知，请核对', timeout: '超时，未提交', duplicate: '重复事件已跳过', unsupported: '题型未支持', skipped: '已跳过', cancelled: '已取消', cache_missing: '题面缺失', invalid: '答案无效' }
+      const statusText = statuses[event.status || ''] || t(`events.${event.status || 'success'}`)
       const answerText = event.answers
         ? Array.isArray(event.answers)
           ? event.answers.join(', ')
@@ -70,7 +71,7 @@ function formatEventLabel(event: ActivityEvent, t: (key: string) => string): str
             : String(event.answers)
         : ''
       const sourceText = event.source ? ` [${t(`events.source_${event.source}`)}]` : ''
-      return `${lesson}${problemTypeName}: ${statusText}${answerText ? `, ${t('events.answer')}: ${answerText}` : ''}${sourceText}`
+      return `${lesson}${problemTypeName}: ${statusText}${answerText ? `, ${t('events.answer')}: ${answerText}` : ''}${sourceText}${event.message ? ' — ' + event.message : ''}`
     }
     case 'danmu':
       return `${lesson}${typeName}: "${event.content || ''}" — ${t(`events.${event.status || 'success'}`)}`
@@ -95,6 +96,7 @@ function buildSpeechText(event: ActivityEvent, isChinese: boolean): string {
   const lesson = event.lesson || ''
   switch (event.type) {
     case 'signin':
+      if (event.status !== 'accepted' && event.status !== 'success') return ''
       return isChinese ? `${lesson}已签到` : `${lesson} checked in`
     case 'problem_received':
       return isChinese ? `${lesson}收到题目` : `${lesson} problem received`
@@ -111,6 +113,7 @@ function buildSpeechText(event: ActivityEvent, isChinese: boolean): string {
       if (event.status === 'ai_fallback_random') {
         return isChinese ? `${lesson}AI答题失败，降级为随机答题` : `${lesson} AI failed, falling back to random`
       }
+      if (event.status !== 'accepted' && event.status !== 'success') return ''
       return isChinese ? `${lesson}已答题` : `${lesson} answered`
     case 'call':
       return isChinese ? '您被点名' : 'You were called on'

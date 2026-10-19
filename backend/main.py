@@ -4,6 +4,7 @@ import logging
 import sys
 import threading
 import time
+import hashlib
 
 _fmt = logging.Formatter(
     fmt="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -44,6 +45,7 @@ from config import (
     DEFAULT_COURSE_CONFIG, DOMAIN_OPTIONS,
 )
 from monitor import Monitor
+from runtime import get_runtime, save_runtime
 
 # API URLs (used only in main.py)
 URL_WSS = "wss://{domain}/wsapp/"
@@ -60,6 +62,7 @@ URL_GET_PUBLIC_KEY = "https://{domain}/pc/register/get_pws_public_key/"
 event_queue: asyncio.Queue = asyncio.Queue()
 _subscribers: set[asyncio.Queue] = set()
 monitor: Optional[Monitor] = None
+_auth_verified = False
 
 
 def get_monitor() -> Optional[Monitor]:
@@ -72,12 +75,13 @@ def set_monitor(m: Optional[Monitor]) -> None:
 
 
 def _handle_session_expired() -> None:
+    global _auth_verified
+    _auth_verified = False
     cfg = get_config()
     cfg["sessionid"] = ""
     cfg["user"] = {}
     cfg["course_list"] = []
     save_config(cfg)
-    set_monitor(None)
 
 
 def _restart_monitor(sessionid: str) -> None:
@@ -96,19 +100,30 @@ def _restart_monitor(sessionid: str) -> None:
 
 
 def _refresh_local_cache(sessionid: str) -> None:
+    global _auth_verified
     cfg = get_config()
     headers = make_headers(sessionid)
 
-    cfg["user"] = http_request("GET", api_url(URL_USER_INFO), headers=headers).json()["data"]
+    response = http_request("GET", api_url(URL_USER_INFO), headers=headers, retries=1)
+    body = response.json()
+    if not response.ok or body.get("code") != 0 or not (body.get("data") or {}).get("id"):
+        _auth_verified = False
+        raise ValueError("服务器未确认用户登录")
+    cfg = get_config()
+    cfg["user"] = body["data"]
+    save_config(cfg)
+    _auth_verified = True
 
-        # 安全获取响应数据
-    response_data = http_request("GET", api_url(URL_COURSE_LIST), headers=headers).json()
+    try:
+        response_data = http_request("GET", api_url(URL_COURSE_LIST), headers=headers, retries=1).json()
+    except Exception as exc:
+        logging.getLogger("auth").warning("用户已验证，课程列表请求暂不可用：%s", type(exc).__name__)
+        return
 
     # 检查是否包含 data
-    if "data" not in response_data:
-        print(f"雨课堂接口返回异常：{response_data}")
-        print("请检查你的 sessionid 是否正确/过期！")
-        raw_courses = []
+    if not isinstance(response_data.get("data"), dict):
+        logging.getLogger("auth").warning("课程列表暂不可用，请刷新课程")
+        return
     else:
         raw_courses = response_data["data"].get("list", [])
     course_list = [
@@ -120,6 +135,7 @@ def _refresh_local_cache(sessionid: str) -> None:
         }
         for c in raw_courses
     ]
+    cfg = get_config()
     cfg["course_list"] = course_list
 
     courses = cfg.setdefault("courses", {})
@@ -154,6 +170,7 @@ async def _broadcast_events():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     loop = asyncio.get_event_loop()
+    event_log.sanitize_storage()
 
     audio_dir = STORE_DIR / "audio"
     if audio_dir.exists():
@@ -171,10 +188,11 @@ async def lifespan(app: FastAPI):
 
     cfg = get_config()
     if cfg.get("sessionid"):
-        _refresh_local_cache(cfg["sessionid"])
-        m = Monitor(sessionid=cfg["sessionid"], event_queue=event_queue)
-        set_monitor(m)
-        m.start(loop)
+        try:
+            await asyncio.to_thread(_refresh_local_cache, cfg["sessionid"])
+        except Exception as exc:
+            logging.getLogger("auth").warning("启动登录验证未完成：%s", type(exc).__name__)
+        _restart_monitor(cfg["sessionid"])
 
     yield
 
@@ -256,6 +274,8 @@ async def update_domain_setting(body: dict):
     valid_keys = {opt["key"] for opt in DOMAIN_OPTIONS}
     if domain not in valid_keys:
         return {"ok": False, "error": "Invalid domain"}
+    if get_config().get("sessionid") and domain != get_domain():
+        return {"ok": False, "error": "切换服务器前请先退出登录"}
     set_domain(domain)
     return {"ok": True, "domain": domain}
 
@@ -265,7 +285,7 @@ async def auth_status():
     cfg = get_config()
     if not cfg.get("sessionid"):
         return {"logged_in": False, "user": None}
-    return {"logged_in": True, "user": cfg["user"]}
+    return {"logged_in": _auth_verified, "user": cfg["user"] if _auth_verified else None}
 
 
 @app.get("/api/user/avatar")
@@ -285,6 +305,8 @@ async def user_avatar():
 
 @app.post("/api/auth/logout")
 async def auth_logout():
+    global _auth_verified
+    _auth_verified = False
     cfg = get_config()
     cfg["sessionid"] = ""
     cfg["user"] = {}
@@ -328,7 +350,7 @@ async def password_login(body: PasswordLoginBody):
         "randstr": body.randstr,
         "hcaptcha_token": "",
     }
-    log.info("Sending login: url=%s, phone=%s, ticket=%s...", login_url, body.phone, body.ticket[:30] if body.ticket else "")
+    log.info("Sending password login to %s", domain)
 
     r = http_request("POST", login_url,
         json=payload,
@@ -366,102 +388,79 @@ async def password_login(body: PasswordLoginBody):
 @app.websocket("/ws/login")
 async def ws_login(ws: WebSocket):
     await ws.accept()
-    loop = asyncio.get_event_loop()
-    login_queue: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+    login_queue = asyncio.Queue()
+    stopped = threading.Event()
+    login_domain = get_domain()
 
-    def on_open(wsapp):
-        wsapp.send(json.dumps({
-            "op": "requestlogin",
-            "role": "web",
-            "version": 1.4,
-            "type": "qrcode",
-            "from": "web",
-        }))
+    def emit(message):
+        if not stopped.is_set() and not loop.is_closed():
+            asyncio.run_coroutine_threadsafe(login_queue.put(message), loop)
+
+    def request_qr(wsapp):
+        wsapp.send(json.dumps({"op": "requestlogin", "role": "web", "version": 1.4, "type": "qrcode", "from": "web"}))
 
     def on_message(wsapp, message):
-        data = json.loads(message)
-        op = data["op"]
-
-        if op == "requestlogin":
-            resp = http_request("GET", data["ticket"])
-            img_b64 = base64.b64encode(resp.content).decode()
-            content_type = resp.headers.get("Content-Type", "image/png").split(";")[0]
-            data_url = "data:%s;base64,%s" % (content_type, img_b64)
-            asyncio.run_coroutine_threadsafe(
-                login_queue.put({"type": "qr", "url": data_url}), loop
-            )
-
-        elif op == "loginsuccess":
-            r = http_request("POST", api_url(URL_WEB_LOGIN),
-                data=json.dumps({"UserID": data["UserID"], "Auth": data["Auth"]}),
-            )
-            sessionid = dict(r.cookies)["sessionid"]
-
-            cfg = get_config()
-            cfg["sessionid"] = sessionid
-            save_config(cfg)
-
-            _refresh_local_cache(sessionid)
-            user = get_config()["user"]
-
-            asyncio.run_coroutine_threadsafe(
-                login_queue.put({"type": "success", "sessionid": sessionid, "user": user}),
-                loop,
-            )
-            wsapp.close()
+        try:
+            data = json.loads(message)
+            if get_domain() != login_domain:
+                raise ValueError("服务器已改变，请重新获取二维码")
+            if data.get("op") == "requestlogin":
+                resp = http_request("GET", data["ticket"], retries=1)
+                resp.raise_for_status()
+                content_type = resp.headers.get("Content-Type", "image/png").split(";")[0]
+                if not content_type.startswith("image/"): raise ValueError("二维码下载未返回图片")
+                emit({"type": "qr", "url": f"data:{content_type};base64,{base64.b64encode(resp.content).decode()}"})
+            elif data.get("op") == "loginsuccess":
+                r = http_request("POST", api_url(URL_WEB_LOGIN), data=json.dumps({"UserID": data["UserID"], "Auth": data["Auth"]}), retries=1)
+                r.raise_for_status()
+                sessionid = r.cookies.get("sessionid")
+                if not sessionid: raise ValueError("登录响应缺少 sessionid")
+                cfg = get_config()
+                cfg["sessionid"] = sessionid
+                save_config(cfg)
+                _refresh_local_cache(sessionid)
+                emit({"type": "success", "user": get_config()["user"]})
+                wsapp.close()
+        except Exception as exc:
+            emit({"type": "error", "message": f"登录尚未验证成功：{type(exc).__name__}，请刷新二维码重试"})
 
     def on_error(wsapp, error):
-        asyncio.run_coroutine_threadsafe(
-            login_queue.put({"type": "error", "message": str(error)}), loop
-        )
+        emit({"type": "error", "message": f"登录连接失败：{type(error).__name__}，请刷新重试"})
 
-    def on_close(wsapp, *args):
-        pass
-
-    def qr_refresh_loop(wsapp_ref):
-        count = 0
-        while getattr(wsapp_ref, "_keep_running", True):
-            if count >= 55:
-                count = 0
-                wsapp_ref.send(json.dumps({
-                    "op": "requestlogin",
-                    "role": "web",
-                    "version": 1.4,
-                    "type": "qrcode",
-                    "from": "web",
-                }))
-            else:
-                time.sleep(1)
-                count += 1
-
-    wsapp = websocket.WebSocketApp(
-        url=api_url(URL_WSS),
-        on_open=on_open,
-        on_message=on_message,
-        on_error=on_error,
-        on_close=on_close,
-    )
-
+    wsapp = websocket.WebSocketApp(url=api_url(URL_WSS), on_open=request_qr, on_message=on_message, on_error=on_error)
     threading.Thread(target=wsapp.run_forever, daemon=True, name="login-ws").start()
-    threading.Thread(target=qr_refresh_loop, args=(wsapp,), daemon=True, name="login-ws-refresh").start()
 
+    def refresh():
+        while not stopped.wait(55):
+            try:
+                if wsapp.sock and wsapp.sock.connected: request_qr(wsapp)
+            except Exception: break
+    threading.Thread(target=refresh, daemon=True, name="login-qr-refresh").start()
+    incoming = asyncio.create_task(ws.receive())
+    outgoing = None
     try:
         while True:
-            msg = await login_queue.get()
-            await ws.send_json(msg)
-
-            if msg["type"] in ("success", "error"):
+            outgoing = asyncio.create_task(login_queue.get())
+            done, _ = await asyncio.wait({incoming, outgoing}, return_when=asyncio.FIRST_COMPLETED)
+            if incoming in done:
                 break
+            message = outgoing.result()
+            await ws.send_json(message)
+            if message["type"] == "success":
+                _restart_monitor(get_config()["sessionid"])
+                break
+            if message["type"] == "error": break
     except (WebSocketDisconnect, RuntimeError):
-        msg = None
+        pass
+    finally:
+        stopped.set()
+        incoming.cancel()
+        if outgoing: outgoing.cancel()
+        wsapp.close()
 
-    if msg and msg.get("type") == "success":
-        _restart_monitor(msg["sessionid"])
 
-    wsapp._keep_running = False
-    wsapp.close()
-
-
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # Course routes
 # ---------------------------------------------------------------------------
@@ -484,7 +483,7 @@ async def get_all_courses_endpoint():
     m = get_monitor()
     active_map: dict = {}
     if m:
-        for lesson in m.get_active_lessons():
+        for lesson in m.discovered:
             active_map[str(lesson["classroomid"])] = lesson["lessonid"]
     return [
         {
@@ -593,12 +592,12 @@ async def test_ai_key(
         _logger.info("Test image size: %d bytes", len(image_bytes))
 
         _logger.info("Calling test_call for provider: %s", provider)
-        result = ai_client.test_call(image_bytes=image_bytes)
+        result = await asyncio.to_thread(ai_client.test_call, image_bytes=image_bytes)
         _logger.info("Test successful: %s", result[:100] + "..." if len(result) > 100 else result)
         return {"ok": True, "message": result}
     except Exception as e:
-        _logger.error("AI test failed: %s", str(e), exc_info=True)
-        return {"ok": False, "error": str(e)}
+        _logger.error("AI test failed: %s", type(e).__name__)
+        return {"ok": False, "error": "AI 请求未通过：" + type(e).__name__}
 
 
 @app.get("/api/ai/settings")
@@ -788,13 +787,106 @@ async def ws_events(ws: WebSocket):
 # Static file serving (production)
 # ---------------------------------------------------------------------------
 
+@app.get("/api/health")
+async def experiment_health():
+    m = get_monitor()
+    validation_path = STORE_DIR / "vision-test.json"
+    try:
+        validation = json.loads(validation_path.read_text(encoding="utf-8")) if validation_path.exists() else None
+    except (ValueError, OSError):
+        validation = None
+    if validation:
+        validation["current_config"] = validation.get("fingerprint") == _ai_fingerprint()
+    return {"server": "ok", "domain": get_domain(), "login_verified": _auth_verified,
+            "runtime": get_runtime(), "monitor": m.health() if m else None, "vision_validation": validation}
+
+
+def _ai_fingerprint():
+    from config import get_active_ai_key_entry
+    entry = get_active_ai_key_entry() or {}
+    return hashlib.sha256(json.dumps(entry, sort_keys=True).encode()).hexdigest()[:16]
+
+
+@app.get("/api/runtime")
+async def runtime_settings():
+    return get_runtime()
+
+
+@app.put("/api/runtime")
+async def runtime_update(body: dict):
+    try:
+        settings = save_runtime(body)
+        # Stop disallowed connections immediately. New connections start at the next poll.
+        from runtime import can_signin
+        m = get_monitor()
+        if m:
+            with m._lock:
+                for lesson in m._active_lessons.values():
+                    if not can_signin(lesson.classroomid): lesson.stop_lesson()
+        event_log.append({"type": "runtime", "status": settings["mode"], "message": "实验模式已更新"})
+        return {"ok": True, "config": settings}
+    except (ValueError, TypeError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@app.post("/api/courses/refresh")
+async def refresh_courses():
+    sessionid = get_config().get("sessionid")
+    if not sessionid: return {"ok": False, "error": "请先扫码登录"}
+    try:
+        await asyncio.to_thread(_refresh_local_cache, sessionid)
+        return {"ok": True}
+    except Exception as exc:
+        return {"ok": False, "error": f"登录或课程刷新失败：{type(exc).__name__}"}
+
+
+@app.get("/api/events/recent")
+async def recent_events():
+    return event_log.load_recent(100)
+
+
+@app.get("/api/experiment/sample.png")
+async def experiment_sample_image():
+    return FileResponse(Path(__file__).resolve().parent.parent / "examples" / "circuit.png")
+
+
+@app.post("/api/experiment/vision-test")
+async def experiment_vision_test():
+    from lesson import Lesson
+    # Same image download, multimodal request and strict parser as classroom questions.
+    problem = {"problemId": "local-circuit", "problemType": 1,
+               "content": "Read the circuit image and compute current I. Choose the answer.",
+               "options": [{"key": "A", "content": "1 A"}, {"key": "B", "content": "2 A"},
+                           {"key": "C", "content": "3 A"}, {"key": "D", "content": "6 A"}],
+               "_cover": "http://127.0.0.1:8500/api/experiment/sample.png"}
+    def run():
+        instance = Lesson({"lessonid": 0, "lessonname": "本地图片试题", "classroomid": 0}, "", {}, lambda *args: None)
+        return instance._build_ai_answers(problem, time.monotonic() + get_runtime()["ai_timeout"])
+    started = time.time()
+    fingerprint = _ai_fingerprint()
+    from config import get_active_ai_key_entry
+    active = get_active_ai_key_entry() or {}
+    try:
+        answer = await asyncio.to_thread(run)
+        result = {"ok": True, "answers": answer, "expected": ["B"], "correct": answer == ["B"], "submitted": False,
+                  "tested_at": time.time(), "elapsed_seconds": round(time.time() - started, 2),
+                  "active_model": active.get("model"), "fingerprint": fingerprint}
+    except Exception as exc:
+        result = {"ok": False, "error": f"识图接口或解析未通过：{type(exc).__name__}。请检查 API Key、地址和视觉模型名称。", "submitted": False,
+                  "tested_at": time.time(), "elapsed_seconds": round(time.time() - started, 2), "fingerprint": fingerprint}
+    (STORE_DIR / "vision-test.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    event_log.append({"type": "vision_test", "status": "passed" if result.get("correct") else "failed",
+                      "message": "本地电路图模型接口验证，不产生课堂提交", **result})
+    return result
+
 
 def _get_static_dir() -> Path:
     """Locate the frontend static files in both normal and PyInstaller environments."""
     if getattr(sys, "frozen", False):
         # PyInstaller bundle — files are extracted to sys._MEIPASS
         return Path(sys._MEIPASS) / "static"
-    return Path(__file__).resolve().parent / "static"
+    static = Path(__file__).resolve().parent / "static"
+    return static if static.is_dir() else Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
 _STATIC_DIR = _get_static_dir()
@@ -804,7 +896,7 @@ if _STATIC_DIR.is_dir():
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        file = _STATIC_DIR / full_path
-        if file.is_file():
+        file = (_STATIC_DIR / full_path).resolve()
+        if file.is_relative_to(_STATIC_DIR.resolve()) and file.is_file():
             return FileResponse(file)
         return FileResponse(_STATIC_DIR / "index.html")

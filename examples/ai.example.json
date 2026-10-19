@@ -1,0 +1,11 @@
+{
+  "keys": [{
+    "name": "填写你的视觉模型",
+    "provider": "openai_compat",
+    "key": "仅在本机填写，不要提交到 Git",
+    "base_url": "https://你的服务商/v1",
+    "model": "填写支持图片输入的准确模型 ID"
+  }],
+  "active_key": 0,
+  "fallback_keys": false
+}

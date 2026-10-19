@@ -29,6 +29,7 @@ export default function Login({ onSuccess }: LoginProps) {
   const navigate = useNavigate()
   const wsRef = useRef<WebSocket | null>(null)
   const [status, setStatus] = useState<LoginStatus>('waiting')
+  const [qrError, setQrError] = useState('')
   const [qrUrl, setQrUrl] = useState<string>('')
   const [domain, setDomain] = useState<string>('')
   const [serverOptions, setServerOptions] = useState<ServerOption[]>([])
@@ -78,6 +79,8 @@ export default function Login({ onSuccess }: LoginProps) {
   }
 
   function connectWs() {
+    wsRef.current?.close()
+    setQrError('')
     setStatus('waiting')
     setQrUrl('')
 
@@ -85,6 +88,7 @@ export default function Login({ onSuccess }: LoginProps) {
     const ws = new WebSocket(`${protocol}://${window.location.host}/ws/login`)
     wsRef.current = ws
 
+    ws.onerror = () => { if (wsRef.current === ws) { setQrError('登录连接失败，请刷新二维码重试'); setStatus('qr_ready') } }
     ws.onmessage = (ev) => {
       let msg: Record<string, unknown>
       try {
@@ -95,7 +99,11 @@ export default function Login({ onSuccess }: LoginProps) {
 
       const type = msg['type'] as string
 
-      if (type === 'qr') {
+      if (wsRef.current !== ws) return
+      if (type === 'error') {
+        setQrError(String(msg['message'] || '登录连接失败，请刷新'))
+        setStatus('qr_ready')
+      } else if (type === 'qr') {
         setQrUrl(msg['url'] as string)
         setStatus('qr_ready')
       } else if (type === 'scanning') {
@@ -282,6 +290,7 @@ export default function Login({ onSuccess }: LoginProps) {
           </>
         )}
 
+        <p style={{ color: "#d33" }}>{qrError}</p>
         <p className="login-note">{t('login.note')}</p>
       </div>
     </div>

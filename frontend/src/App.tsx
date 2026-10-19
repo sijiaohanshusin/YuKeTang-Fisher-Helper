@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useState } from 'react'
 import { Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import Login from './pages/Login'
+import Experiment from './pages/Experiment'
 import Dashboard from './pages/Dashboard'
 import Settings from './pages/Settings'
 import { ToastProvider } from './components/Toast'
@@ -38,14 +39,13 @@ export default function App() {
   })
 
   useEffect(() => {
-    fetch('/api/auth/status')
+    const refresh = () => fetch('/api/auth/status')
       .then((r) => r.json())
-      .then((data) => {
-        setAuth({ checked: true, loggedIn: data.logged_in, user: data.user })
-      })
-      .catch(() => {
-        setAuth({ checked: true, loggedIn: false, user: null })
-      })
+      .then((data) => setAuth({ checked: true, loggedIn: data.logged_in, user: data.user }))
+      .catch(() => setAuth({ checked: true, loggedIn: false, user: null }))
+    refresh()
+    const timer = setInterval(refresh, 15000)
+    return () => clearInterval(timer)
   }, [])
 
   const handleLogout = async () => {
@@ -75,6 +75,8 @@ export default function App() {
       <nav className="navbar">
         <div className="navbar-brand">{t('nav.brand')}</div>
         <div className="navbar-links">
+          <NavLink to="/experiment" className="nav-link">课堂实验</NavLink>
+          {!auth.loggedIn && <NavLink to="/login" className="nav-link">扫码登录</NavLink>}
           {auth.loggedIn ? (
             <>
               <NavLink
@@ -127,6 +129,7 @@ export default function App() {
 
       <main className="main-content">
         <Routes>
+          <Route path="/experiment" element={<Experiment />} />
           <Route
             path="/"
             element={

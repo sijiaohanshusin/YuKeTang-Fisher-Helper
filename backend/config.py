@@ -3,6 +3,8 @@ import logging
 import os
 import sys
 import time as _time
+import threading
+import copy
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +14,8 @@ from typing import Any
 # domains are domestic and don't need a proxy.  Google AI requests are NOT
 # included so they can still go through the user's proxy.
 _NO_PROXY_DOMAINS = ",".join([
+    "127.0.0.1",
+    "localhost",
     "pro.yuketang.cn",
     "www.yuketang.cn",
     "changjiang.yuketang.cn",
@@ -37,18 +41,19 @@ STORE_DIR.mkdir(parents=True, exist_ok=True)
 
 _CONFIG_PATH = STORE_DIR / "config.json"
 _ANSWER_QUEUE_PATH = STORE_DIR / "answer_queue.json"
+_config_lock = threading.RLock()
 
 DEFAULT_COURSE_CONFIG: dict = {
     "type1": "ai",
     "type2": "ai",
-    "type3": "random",
+    "type3": "ai",
     "type4": "off",
     "type5": "ai",
     "answer_delay_min": 1,
     "answer_delay_max": 2,
-    "answer_last5s": True,
-    "auto_danmu": True,
-    "auto_redpacket": True,
+    "answer_last5s": False,
+    "auto_danmu": False,
+    "auto_redpacket": False,
     "danmu_threshold": 3,
     "notification": {
         "enabled": False,
@@ -85,22 +90,23 @@ DOMAIN_OPTIONS = [
     {"key": "huanghe.yuketang.cn", "label": "Huanghe Yuketang", "label_zh": "黄河雨课堂"},
 ]
 
-DEFAULT_DOMAIN = "pro.yuketang.cn"
+DEFAULT_DOMAIN = "www.yuketang.cn"
 
 _EMPTY_CONFIG = {"sessionid": "", "domain": DEFAULT_DOMAIN, "user": {}, "course_list": [], "courses": {}, "ai": dict(DEFAULT_AI_CONFIG), "audio": dict(DEFAULT_AUDIO_CONFIG)}
 
 
 def get_config() -> dict:
-    if not _CONFIG_PATH.exists():
-        save_config(dict(_EMPTY_CONFIG))
-        return dict(_EMPTY_CONFIG)
-    with open(_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+    with _config_lock:
+        if not _CONFIG_PATH.exists():
+            save_config(copy.deepcopy(_EMPTY_CONFIG))
+        return json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
 
 
 def save_config(cfg: dict) -> None:
-    with open(_CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    with _config_lock:
+        tmp = _CONFIG_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(_CONFIG_PATH)
 
 
 def get_course_config(course_id: str) -> dict:
@@ -296,7 +302,7 @@ _DEFAULT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:104.0) Gecko/2010010
 def http_request(
     method: str,
     url: str,
-    retries: int = 10,
+    retries: int = 3,
     timeout: int = 5,
     **kwargs: Any,
 ) -> requests.Response:
@@ -312,9 +318,11 @@ def http_request(
             r = requests.request(method, url, **kwargs)
             if r.status_code < 500:
                 return r
-            _http_log.warning("HTTP %s %s → %s (attempt %d/%d)", method, url, r.status_code, attempt, retries)
+            from urllib.parse import urlsplit
+            _http_log.warning("HTTP %s %s → %s (attempt %d/%d)", method, urlsplit(url).hostname, r.status_code, attempt, retries)
         except requests.RequestException as e:
-            _http_log.warning("HTTP %s %s failed: %s (attempt %d/%d)", method, url, e, attempt, retries)
+            from urllib.parse import urlsplit
+            _http_log.warning("HTTP %s %s failed: %s (attempt %d/%d)", method, urlsplit(url).hostname, type(e).__name__, attempt, retries)
             last_exc = e
         if attempt < retries:
             _time.sleep(min(attempt, 3))

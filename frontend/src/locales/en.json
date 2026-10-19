@@ -9,7 +9,7 @@
     "success": "Login successful! Redirecting...",
     "refresh": "Refresh QR Code",
     "waiting": "Waiting for QR code...",
-    "note": "Note: Login only grants access to your Yuketang session for monitoring. All user data, session information, and API keys are stored locally on your device only.",
+    "note": "Credentials are stored locally. Session credentials are sent to the selected Yuketang server; the AI key and question content are sent to your configured model endpoint.",
     "server": "Server",
     "methodQR": "QR Code",
     "methodPassword": "Password",
@@ -169,6 +169,6 @@
     "off": "Off",
     "unknown": "Unknown",
     "betaLabel": "Caveat",
-    "betaWarning": "AI answer accuracy is not guaranteed. If no API key is configured, random answering is used as fallback. If the key is misconfigured or the AI call fails, questions may go unanswered."
+    "betaWarning": "Observation mode does not check in or submit. Missing, failed or late AI answers are skipped. Only accepted confirms server acceptance."
   }
 }

@@ -410,7 +410,7 @@ export default function Settings() {
       if (testImageFile) {
         formData.append('image', testImageFile)
       }
-      
+
       const resp = await fetch('/api/ai/test', {
         method: 'POST',
         body: formData,
@@ -592,22 +592,16 @@ export default function Settings() {
     )
   }
 
-  const modeOptions = (hasAi: boolean) => {
-    const opts = [
-      { value: 'random', label: t('settings.random') },
-      { value: 'off', label: t('settings.disabled') },
-    ]
-    if (hasAi) {
-      opts.splice(1, 0, { value: 'ai', label: 'AI' })
-      opts.splice(1, 0, { value: 'queue', label: t('settings.answerQueue') || 'Answer Queue' })
-    }
-    return opts
-  }
+  const modeOptions = (_hasAi: boolean) => [
+    { value: 'ai', label: 'AI' },
+    { value: 'off', label: t('settings.disabled') },
+  ]
 
   if (loading) {
     return (
       <div className="page">
         <h1 className="page-title">{t('settings.title')}</h1>
+      <p>本地课堂实验仅使用 AI/off 策略；答案队列、弹幕和红包不参与执行。请在“课堂实验”页选择课程和控制签到、提交。</p>
         <p className="empty-message">{t('common.loading')}</p>
       </div>
     )
@@ -616,6 +610,7 @@ export default function Settings() {
   return (
     <div className="page">
       <h1 className="page-title">{t('settings.title')}</h1>
+      <p>本地课堂实验仅使用 AI/off 策略；答案队列、弹幕和红包不参与执行。请在“课堂实验”页选择课程和控制签到、提交。</p>
 
       {/* AI Settings */}
       <section className="settings-section">
@@ -840,7 +835,7 @@ export default function Settings() {
               <option value="short">{t('settings.shortAnswer') || 'Short Answer'}</option>
             </select>
           </div>
-          
+
           {/* Choice options for single and multiple choice */}
           {newAnswer.type !== 'short' && (
             <div className="form-row">
@@ -868,7 +863,7 @@ export default function Settings() {
               </div>
             </div>
           )}
-          
+
           {/* Text input for short answer */}
           {newAnswer.type === 'short' && (
             <div className="form-row">
@@ -936,7 +931,7 @@ export default function Settings() {
               </div>
             </div>
           )}
-          
+
           {answerQueue.length > 0 && (
             <div style={{ marginTop: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
@@ -1177,7 +1172,7 @@ export default function Settings() {
                       value={course.type5}
                       options={[
                         { value: 'ai', label: 'AI' },
-                        { value: 'blank', label: t('settings.blank') },
+
                         { value: 'off', label: t('settings.disabled') },
                       ]}
                       onChange={(v) => updateField(course.courseId, 'type5', v)}

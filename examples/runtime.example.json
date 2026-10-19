@@ -1,0 +1,9 @@
+{
+  "mode": "observe",
+  "auto_signin": false,
+  "submit_answers": false,
+  "course_ids": [],
+  "poll_interval": 30,
+  "submit_reserve": 3,
+  "ai_timeout": 90
+}

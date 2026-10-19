@@ -28,4 +28,9 @@ dist/
 .claude/
 .vscode/
 .venv/
+.env
+.env.*
+!*.example
+*.local.json
+backend/static/
 .git/
