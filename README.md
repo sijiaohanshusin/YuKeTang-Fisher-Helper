@@ -59,6 +59,10 @@ Windows 已有 Python 3.11+ 与 Node.js 时，双击 `init-local.bat` 初始化�
 
 详细说明：[分发使用说明](分发使用说明.md)、[本机实验使用说明](本地使用说明.md)、[历史验证记录](验证记录.md)、[本次发布说明](RELEASE_NOTES.md)。
 
+## 社区
+
+感谢 [LINUX DO](https://linux.do/) 社区提供软件分享与开发交流的平台。
+
 ## 来源
 
 本分支基于 [Nijika-jia/YuKeTang-Fisher-Helper](https://github.com/Nijika-jia/YuKeTang-Fisher-Helper)，其上游为 [dvdsanyi/Yuketang-Helper-Web](https://github.com/dvdsanyi/Yuketang-Helper-Web)，并注明参考 [RainClassroomAssitant](https://github.com/TrickyDeath/RainClassroomAssitant) 与 [THU-Yuketang-Helper](https://github.com/zhangchi2004/THU-Yuketang-Helper)。原始快照提交为 cc46b316fe3b37499f463e28e5a8f634df1416e8。

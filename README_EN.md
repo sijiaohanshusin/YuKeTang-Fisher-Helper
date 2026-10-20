@@ -16,4 +16,6 @@ Installer data is stored under `%LOCALAPPDATA%\YuketangHelper`; portable data is
 
 For source development on Windows, initialize with `init-local.bat`, then use `start-local.bat`, `stop-local.bat` and `logs-local.bat`. Python 3.11 and the locked dependencies have been tested. Only Windows x64 distribution is currently verified.
 
+Community: thanks to [LINUX DO](https://linux.do/) for providing a place to share software and discuss development.
+
 See [distribution instructions](分发使用说明.md), [validation record](验证记录.md), [release notes](RELEASE_NOTES.md), and [third-party notices](THIRD_PARTY_NOTICES.md). This fork is based on [Nijika-jia/YuKeTang-Fisher-Helper](https://github.com/Nijika-jia/YuKeTang-Fisher-Helper) at `cc46b316fe3b37499f463e28e5a8f634df1416e8`; attribution and license statements are retained in the notices.
